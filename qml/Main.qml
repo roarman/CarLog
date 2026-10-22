@@ -29,9 +29,13 @@ App {
 
   DataModel {
     id: dataModel
+    dispatcher: logic // data model handles actions sent by logic
   }
 
-  OnboardingPage {
-
+  Loader {
+    anchors.fill: parent
+    source: dataModel.onboardingCompleted
+            ? "pages/MainPage.qml"
+            : "pages/OnboardingPage.qml"
   }
 }

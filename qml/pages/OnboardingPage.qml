@@ -44,6 +44,7 @@ AppPage {
       }
 
       StyledTextField {
+        id: carNameField
         Layout.fillWidth: true
         placeholderText: "Edit text here"
         width: dp(200)
@@ -53,8 +54,9 @@ AppPage {
     StyledButton {
       width: parent.width
       text: qsTr("Register your car")
+      enabled: carNameField.text.trim().length > 0
       onClicked: {
-
+        logic.onboardingFinished(carNameField.text)
       }
     }
   }
