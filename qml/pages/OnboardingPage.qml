@@ -1,16 +1,45 @@
-import Felgo
 import QtQuick
 import QtQuick.Layouts
+import Felgo
 import "../components"
 
 AppPage {
   id: root
+
+  signal onboardingFinished(string carName)
+
+  property TransitionOverlay transitionOverlay: null
+  property bool departureRunning: false
+  property string pendingCarName: ""
+
+  function resetForm() {
+    carNameField.clear()
+  }
+
+  function revealMainPage() {
+    root.transitionOverlay.reveal()
+  }
+
+  Connections {
+    target: root.transitionOverlay
+
+    function onCovered() {
+      root.onboardingFinished(root.pendingCarName)
+    }
+
+    function onFinished() {
+      root.pendingCarName = ""
+      root.departureRunning = false
+      carTranslation.x = 0
+    }
+  }
 
   Column {
     id: column
     anchors.fill: parent
     anchors.margins: dp(20)
     spacing: dp(10)
+    enabled: !root.departureRunning
 
     // Spacer
     Item {
@@ -33,6 +62,7 @@ AppPage {
       height: width * 0.7
 
       fillMode: AppImage.PreserveAspectFit
+      transform: Translate { id: carTranslation }
     }
 
     RowLayout {
@@ -56,8 +86,25 @@ AppPage {
       text: qsTr("Register your car")
       enabled: carNameField.text.trim().length > 0
       onClicked: {
-        logic.onboardingFinished(carNameField.text)
+        if (root.departureRunning || !root.transitionOverlay || root.transitionOverlay.running
+            || carNameField.text.trim().length === 0)
+          return
+
+        root.pendingCarName = carNameField.text.trim()
+        root.departureRunning = true
+        carDeparture.start()
+        root.transitionOverlay.start()
       }
     }
+  }
+
+  NumberAnimation {
+    id: carDeparture
+    target: carTranslation
+    property: "x"
+    from: 0
+    to: root.width + carImage.width
+    duration: 450
+    easing.type: Easing.InCubic
   }
 }

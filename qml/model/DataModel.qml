@@ -27,12 +27,24 @@ Item {
     return true
   }
 
+  // For Testing
+  function resetOnboarding() {
+    storage.setValue("carName", "")
+    storage.setValue("onboardingCompleted", false)
+    root.carName = ""
+    root.onboardingCompleted = false
+  }
+
   // listen to actions from dispatcher
   Connections {
     id: logicConnection
 
     function onOnboardingFinished(carName) {
       completeOnboarding(carName)
+    }
+
+    function onOnboardingReset() {
+      resetOnboarding()
     }
   }
 
