@@ -31,5 +31,14 @@ AppPage {
         }
       }
     }
+
+    NavigationItem {
+      title: qsTr("Statistics")
+      iconType: IconType.barchart
+
+      NavigationStack {
+        initialPage: StatisticsPage {}
+      }
+    }
   }
 }
