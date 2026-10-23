@@ -2,6 +2,7 @@ import QtQuick
 import Felgo
 
 AppPage {
+  id: root
   // view
   Navigation {
     id: navigation
@@ -13,7 +14,17 @@ AppPage {
       iconType: IconType.home
 
       NavigationStack {
-        initialPage: HomePage { }
+        id: homeNavigation
+        initialPage: HomePage {
+          onAddFuelRecordRequested: homeNavigation.push(addFuelRecordComponent)
+        }
+
+        Component {
+          id: addFuelRecordComponent
+          AddFuelRecordPage {
+            onSaved: homeNavigation.pop()
+          }
+        }
       }
     }
   }
