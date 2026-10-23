@@ -8,6 +8,7 @@ AppPage {
   title: qsTr("Home")
   property var fuelRecords: dataModel.fuelRecords
   signal addFuelRecordRequested()
+  signal editFuelRecordRequested(var record)
 
   ColumnLayout {
     anchors.fill: parent
@@ -83,6 +84,12 @@ AppPage {
         delegate: Item {
           width: recordsList.width
           height: recordContent.implicitHeight + dp(32) + px(1)
+
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.editFuelRecordRequested(modelData)
+          }
 
           ColumnLayout {
             id: recordContent

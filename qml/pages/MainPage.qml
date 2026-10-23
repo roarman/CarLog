@@ -17,12 +17,16 @@ AppPage {
         id: homeNavigation
         initialPage: HomePage {
           onAddFuelRecordRequested: homeNavigation.push(addFuelRecordComponent)
+          onEditFuelRecordRequested: function(record) {
+            homeNavigation.push(addFuelRecordComponent, {recordToEdit: record})
+          }
         }
 
         Component {
           id: addFuelRecordComponent
           AddFuelRecordPage {
             onSaved: homeNavigation.pop()
+            onDeleted: homeNavigation.pop()
           }
         }
       }
