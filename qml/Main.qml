@@ -7,17 +7,34 @@ import "components"
 
 
 App {
-  color: "white"
+  color: Theme.colors.backgroundColor
+
+  // Open the first page only after Felgo's launch screen has faded out.
+  onSplashScreenFinished: {
+    appNavigation.push(onboardingPage)
+    if (dataModel.onboardingCompleted)
+      appNavigation.push(mainPageComponent)
+  }
 
   onInitTheme: {
     Theme.colors.statusBarStyle = Theme.colors.statusBarStyleWhite
 
     // Colors customization
-    Theme.colors.backgroundColor = "#fff"
+    Theme.colors.backgroundColor = "#f7f4f2"
     Theme.colors.secondaryBackgroundColor = Theme.colors.backgroundColor
     Theme.colors.tintColor = "#b83232"
     Theme.colors.secondaryTextColor = "#030303"
     Theme.colors.textColor = "black"
+
+    // Shared card colors for Home and Statistics.
+    Theme.listItem.backgroundColor = "#ffffff"
+    Theme.listItem.dividerColor = "#eae2df"
+    Theme.listItem.textColor = "#292426"
+    Theme.listItem.detailTextColor = "#786d6d"
+    Theme.listItem.selectedBackgroundColor = "#f0e9e7"
+    Theme.listItem.activeBackgroundColor = "#f8e9e7"
+
+    Theme.appButton.backgroundColorPressed = "#962828"
   }
 
   Storage {
@@ -38,12 +55,8 @@ App {
     anchors.fill: parent
     splitView: false
 
-    Component.onCompleted: {
-      push(dataModel.onboardingCompleted ? mainPageComponent : onboardingPage)
-    }
-
-    onTransitionFinished: {
-      if (dataModel.onboardingCompleted)
+    onTransitioningChanged: {
+      if (!transitioning && dataModel.onboardingCompleted)
         onboardingPage.revealMainPage()
     }
   }
@@ -51,20 +64,40 @@ App {
   OnboardingPage {
     id: onboardingPage
     visible: false
-    navigationBarHidden: true
+    // The retained onboarding page must not flash behind Main on a saved launch.
+    opacity: dataModel.onboardingCompleted ? 0 : 1
     transitionOverlay: appTransitionOverlay
     onOnboardingFinished: function(carName) {
       logic.onboardingFinished(carName)
-      Qt.callLater(function() {
-        if (dataModel.onboardingCompleted && !appNavigation.transitioning)
-          onboardingPage.revealMainPage()
-      })
+      if (dataModel.onboardingCompleted && !appNavigation.transitioning)
+        onboardingPage.revealMainPage()
     }
   }
 
   Component {
     id: mainPageComponent
-    MainPage { navigationBarHidden: true }
+    MainPage {}
+  }
+
+  Component {
+    id: fuelRecordComponent
+    AddFuelRecordPage {
+      onSaved: appNavigation.pop()
+      onDeleted: appNavigation.pop()
+    }
+  }
+
+  Connections {
+    target: appNavigation.currentPage
+    ignoreUnknownSignals: true
+
+    function onAddFuelRecordRequested() {
+      appNavigation.push(fuelRecordComponent)
+    }
+
+    function onEditFuelRecordRequested(record) {
+      appNavigation.push(fuelRecordComponent, {recordToEdit: record})
+    }
   }
 
   Connections {
@@ -75,8 +108,10 @@ App {
         onboardingPage.resetForm()
 
       if (appNavigation.depth > 0) {
-        appNavigation.clearAndPush(dataModel.onboardingCompleted
-                                   ? mainPageComponent : onboardingPage)
+        if (dataModel.onboardingCompleted)
+          appNavigation.push(mainPageComponent)
+        else
+          appNavigation.popAllExceptFirst()
       }
     }
   }

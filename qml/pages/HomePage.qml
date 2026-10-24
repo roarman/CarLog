@@ -6,141 +6,120 @@ import "../components"
 AppPage {
   id: root
   title: qsTr("Home")
+  backgroundColor: Theme.colors.backgroundColor
+  property bool isEntranceReady: true
   property var fuelRecords: dataModel.fuelRecords
+  property alias entranceProgress: cardEntrance.progress
+  property real carOffset: -dp(400)
   signal addFuelRecordRequested()
   signal editFuelRecordRequested(var record)
+
+  // Reset before the page is revealed, including when reusing it after onboarding.
+  function resetEntrance() {
+    entranceAnimation.stop()
+    entranceProgress = 0
+    carOffset = -Math.max(width, dp(400))
+  }
+
+  // Animate transforms so the layout keeps each card's final position.
+  function playEntrance() {
+    resetEntrance()
+    if (isEntranceReady)
+      entranceAnimation.restart()
+  }
+
+  onIsEntranceReadyChanged: {
+    if (!isEntranceReady)
+      resetEntrance()
+  }
+
+  onAppeared: playEntrance()
+  onDisappeared: entranceAnimation.stop()
+
+  ParallelAnimation {
+    id: entranceAnimation
+    SlideInAnimation { id: cardEntrance }
+    SequentialAnimation {
+      PauseAnimation { duration: 180 }
+      NumberAnimation {
+        target: root
+        property: "carOffset"
+        from: -Math.max(root.width, dp(400))
+        to: 0
+        duration: 650
+        easing.type: Easing.OutCubic
+      }
+    }
+  }
 
   ColumnLayout {
     anchors.fill: parent
     anchors.margins: dp(20)
-    spacing: dp(16)
+    spacing: dp(18)
+
+    VehicleCard {
+      id: vehicleCard
+      Layout.fillWidth: true
+      Layout.preferredHeight: dp(180)
+      carName: dataModel.carName
+      entranceProgress: cardEntrance.progressForCard(0)
+      carOffset: root.carOffset
+      onResetRequested: logic.onboardingReset()
+    }
 
     RowLayout {
+      id: recordActions
       Layout.fillWidth: true
+      spacing: dp(12)
+      readonly property real cardProgress: cardEntrance.progressForCard(1)
+      opacity: cardProgress
+      transform: Translate { y: (1 - recordActions.cardProgress) * dp(40) }
+
       StyledText {
         Layout.fillWidth: true
-        text: dataModel.carName
-        font.pixelSize: sp(24)
-        font.bold: true
-        elide: Text.ElideRight
+        text: qsTr("Fuel records")
+        color: Theme.listItem.textColor
+        font.pixelSize: sp(22)
+        font.weight: Font.DemiBold
       }
       StyledButton {
-        text: qsTr("Reset")
-        flat: true
-        onClicked: logic.onboardingReset()
+        id: addRecordButton
+        Layout.preferredWidth: dp(52)
+        Layout.preferredHeight: dp(52)
+        minimumWidth: dp(52)
+        minimumHeight: dp(52)
+        horizontalMargin: 0
+        verticalMargin: 0
+        radius: dp(18)
+        iconType: IconType.plus
+        iconSize: sp(20)
+        textColor: Theme.listItem.backgroundColor
+        backgroundColor: Theme.colors.tintColor
+        backgroundColorPressed: Theme.appButton.backgroundColorPressed
+        borderWidth: 0
+        background: Rectangle {
+          radius: dp(18)
+          color: addRecordButton.pressed ? addRecordButton.backgroundColorPressed
+                                         : addRecordButton.backgroundColor
+        }
+        Accessible.name: qsTr("Add fuel record")
+        Accessible.role: Accessible.Button
+        onClicked: root.addFuelRecordRequested()
       }
     }
 
-    StyledText {
-      text: qsTr("Fuel records")
-      font.pixelSize: sp(20)
-      font.bold: true
-    }
-
-    StyledButton {
-      Layout.fillWidth: true
-      text: qsTr("Add fuel record")
-      onClicked: root.addFuelRecordRequested()
-    }
-
-    StyledText {
-      Layout.fillWidth: true
-      visible: dataModel.fuelRecordsError.length > 0
-      text: dataModel.fuelRecordsError
-      color: "#b83232"
-      wrapMode: Text.WordWrap
-    }
-
-    Item {
+    FuelRecordsList {
+      id: recordsList
       Layout.fillWidth: true
       Layout.fillHeight: true
-
-      Column {
-        anchors.centerIn: parent
-        width: parent.width
-        spacing: dp(8)
-        visible: recordsList.count === 0 && !dataModel.fuelRecordsError
-        StyledText {
-          width: parent.width
-          text: qsTr("No fuel records yet")
-          horizontalAlignment: Text.AlignHCenter
-          font.bold: true
-        }
-        StyledText {
-          width: parent.width
-          text: qsTr("Keep track of your refuelling here.")
-          horizontalAlignment: Text.AlignHCenter
-          wrapMode: Text.WordWrap
-          color: "#666666"
-        }
-      }
-
-      ListView {
-        id: recordsList
-        anchors.fill: parent
-        clip: true
-        spacing: 0
-        model: root.fuelRecords
-        delegate: Item {
-          width: recordsList.width
-          height: recordContent.implicitHeight + dp(32) + px(1)
-
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.editFuelRecordRequested(modelData)
-          }
-
-          ColumnLayout {
-            id: recordContent
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.topMargin: dp(16)
-            spacing: dp(6)
-
-            RowLayout {
-              Layout.fillWidth: true
-              spacing: dp(16)
-              StyledText {
-                id: recordDate
-                Layout.fillWidth: true
-                text: modelData.date
-                font.pixelSize: sp(16)
-                elide: Text.ElideRight
-              }
-              StyledText {
-                id: recordAmount
-                Layout.maximumWidth: recordContent.width * 0.5
-                text: modelData.totalCost + " €"
-                horizontalAlignment: Text.AlignRight
-                font.pixelSize: sp(18)
-                font.bold: true
-                elide: Text.ElideLeft
-              }
-            }
-            StyledText {
-              id: recordDetails
-              Layout.fillWidth: true
-              text: qsTr("%1 km · %2 L")
-                    .arg(modelData.mileage)
-                    .arg(modelData.liters)
-              font.pixelSize: sp(14)
-              color: Theme.colors.textColor
-              opacity: 0.65
-              wrapMode: Text.WordWrap
-            }
-          }
-
-          Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: px(1)
-            color: Theme.dividerColor
-          }
-        }
-      }
+      spacing: dp(18)
+      records: root.fuelRecords
+      editable: true
+      entranceAnimation: cardEntrance
+      emptyDescription: qsTr("Tap + to add your first fuel record.")
+      emptyOpacity: root.entranceProgress
+      errorMessage: dataModel.fuelRecordsError
+      onRecordClicked: function(record) { root.editFuelRecordRequested(record) }
     }
   }
 }

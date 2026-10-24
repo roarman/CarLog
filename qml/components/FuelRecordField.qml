@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Felgo
+import "../design"
 
 ColumnLayout {
   id: root
@@ -15,19 +16,25 @@ ColumnLayout {
   signal clicked()
 
   spacing: dp(6)
-  StyledText { text: label }
+
+  StyledText {
+    text: label
+  }
+
   StyledTextField {
     id: field
     Layout.fillWidth: true
+    backgroundColor: Design.inputBackgroundColor
     onClicked: root.clicked()
     onTextEdited: root.textEdited()
-    borderColor: root.errorText ? "#b83232" : Theme.dividerColor
+    borderColor: root.errorText ? Theme.colors.tintColor : Theme.dividerColor
   }
+
   StyledText {
     Layout.fillWidth: true
     visible: root.errorText.length > 0
     text: root.errorText
-    color: "#b83232"
+    color: Theme.colors.tintColor
     font.pixelSize: sp(13)
     wrapMode: Text.WordWrap
   }

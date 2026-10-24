@@ -6,6 +6,8 @@ import "../components"
 AppPage {
   id: root
   title: qsTr("Statistics")
+  backgroundColor: Theme.colors.backgroundColor
+  property alias entranceProgress: cardEntrance.progress
   property bool isAllTime: false
   property bool isSelectingStartDate: true
   readonly property bool isThisMonth: !isAllTime
@@ -52,152 +54,201 @@ AppPage {
     datePickerModal.openForDate(isStart ? startDate : endDate)
   }
 
+  function playEntrance() {
+    cardEntrance.stop()
+    cardEntrance.progress = 0
+    cardEntrance.restart()
+  }
+
+  onAppeared: playEntrance()
+  onDisappeared: cardEntrance.stop()
   onPopped: datePickerModal.close()
+
+  SlideInAnimation { id: cardEntrance }
 
   ColumnLayout {
     anchors.fill: parent
     anchors.margins: dp(20)
     spacing: dp(16)
 
-    RowLayout {
+    Rectangle {
+      id: periodCard
       Layout.fillWidth: true
-      StyledButton {
-        Layout.fillWidth: true
-        text: qsTr("All time")
-        flat: true
-        fontBold: root.isAllTime
-        textColor: root.isAllTime ? Theme.colors.tintColor : Theme.colors.textColor
-        onClicked: root.isAllTime = true
-      }
-      StyledButton {
-        Layout.fillWidth: true
-        text: qsTr("This month")
-        flat: true
-        fontBold: root.isThisMonth
-        textColor: root.isThisMonth ? Theme.colors.tintColor : Theme.colors.textColor
-        onClicked: root.showThisMonth()
-      }
-    }
+      readonly property real cardProgress: cardEntrance.progressForCard(0)
+      opacity: cardProgress
+      transform: Translate { y: (1 - periodCard.cardProgress) * dp(56) }
+      implicitHeight: periodContent.implicitHeight + dp(32)
+      radius: dp(18)
+      color: Theme.listItem.backgroundColor
+      border.color: Theme.listItem.dividerColor
+      border.width: px(1)
 
-    FuelRecordField {
-      Layout.fillWidth: true
-      label: qsTr("From")
-      text: root.isAllTime ? qsTr("All dates") : root.startDateText
-      readOnly: true
-      clickEnabled: true
-      onClicked: root.selectDate(true)
-    }
+      ColumnLayout {
+        id: periodContent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: dp(16)
+        spacing: dp(12)
 
-    FuelRecordField {
-      Layout.fillWidth: true
-      label: qsTr("To")
-      text: root.isAllTime ? qsTr("All dates") : root.endDateText
-      readOnly: true
-      clickEnabled: true
-      onClicked: root.selectDate(false)
-    }
-
-    StyledText {
-      Layout.fillWidth: true
-      visible: !root.isValidPeriod || dataModel.fuelRecordsError.length > 0
-      text: dataModel.fuelRecordsError || qsTr("Start date must be on or before end date.")
-      color: "#b83232"
-      wrapMode: Text.WordWrap
-    }
-
-    ColumnLayout {
-      Layout.fillWidth: true
-      visible: root.isValidPeriod && !dataModel.fuelRecordsError
-      spacing: dp(8)
-
-      Repeater {
-        model: [
-          {label: qsTr("Records"), value: String(root.filteredRecords.length)},
-          {label: qsTr("Fuel added"), value: root.totals.liters.toFixed(2) + " L"},
-          {label: qsTr("Total cost"), value: root.totals.cost.toFixed(2) + " €"}
-        ]
+        StyledText {
+          text: qsTr("Period")
+          color: Theme.listItem.textColor
+          font.pixelSize: sp(18)
+          font.weight: Font.DemiBold
+        }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: dp(8)
+          StyledButton {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            minimumWidth: 0
+            horizontalMargin: 0
+            verticalMargin: 0
+            text: qsTr("All time")
+            textSize: sp(14)
+            textColor: root.isAllTime ? Theme.colors.tintColor : Theme.listItem.detailTextColor
+            fontBold: root.isAllTime
+            background: Rectangle {
+              radius: dp(10)
+              color: root.isAllTime ? Theme.listItem.activeBackgroundColor : Theme.colors.backgroundColor
+            }
+            onClicked: root.isAllTime = true
+          }
+          StyledButton {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            minimumWidth: 0
+            horizontalMargin: 0
+            verticalMargin: 0
+            text: qsTr("This month")
+            textSize: sp(14)
+            textColor: root.isThisMonth ? Theme.colors.tintColor : Theme.listItem.detailTextColor
+            fontBold: root.isThisMonth
+            background: Rectangle {
+              radius: dp(10)
+              color: root.isThisMonth ? Theme.listItem.activeBackgroundColor : Theme.colors.backgroundColor
+            }
+            onClicked: root.showThisMonth()
+          }
+        }
         RowLayout {
           Layout.fillWidth: true
           spacing: dp(12)
-          StyledText {
+          ColumnLayout {
             Layout.fillWidth: true
-            text: modelData.label
-            font.pixelSize: sp(14)
-            opacity: 0.65
+            Layout.preferredWidth: 1
+            spacing: dp(6)
+            StyledText {
+              text: qsTr("From")
+              color: Theme.listItem.detailTextColor
+              font.pixelSize: sp(12)
+            }
+            StyledButton {
+              Layout.fillWidth: true
+              minimumWidth: 0
+              horizontalMargin: 0
+              verticalMargin: 0
+              horizontalPadding: dp(6)
+              text: root.isAllTime ? qsTr("All dates") : root.startDateText
+              textSize: sp(13)
+              textColor: Theme.listItem.textColor
+              background: Rectangle { radius: dp(10); color: Theme.colors.backgroundColor }
+              Accessible.name: qsTr("Start date")
+              onClicked: root.selectDate(true)
+            }
           }
-          StyledText {
-            text: modelData.value
-            font.pixelSize: sp(18)
-            font.bold: true
+          ColumnLayout {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            spacing: dp(6)
+            StyledText {
+              text: qsTr("To")
+              color: Theme.listItem.detailTextColor
+              font.pixelSize: sp(12)
+            }
+            StyledButton {
+              Layout.fillWidth: true
+              minimumWidth: 0
+              horizontalMargin: 0
+              verticalMargin: 0
+              horizontalPadding: dp(6)
+              text: root.isAllTime ? qsTr("All dates") : root.endDateText
+              textSize: sp(13)
+              textColor: Theme.listItem.textColor
+              background: Rectangle { radius: dp(10); color: Theme.colors.backgroundColor }
+              Accessible.name: qsTr("End date")
+              onClicked: root.selectDate(false)
+            }
           }
         }
       }
     }
 
-    Item {
+    Rectangle {
+      id: summaryCard
       Layout.fillWidth: true
-      Layout.fillHeight: true
       visible: root.isValidPeriod && !dataModel.fuelRecordsError
+      readonly property real cardProgress: cardEntrance.progressForCard(1)
+      opacity: cardProgress
+      transform: Translate { y: (1 - summaryCard.cardProgress) * dp(64) }
+      implicitHeight: summaryContent.implicitHeight + dp(32)
+      radius: dp(18)
+      color: Theme.listItem.backgroundColor
+      border.color: Theme.listItem.dividerColor
+      border.width: px(1)
 
-      StyledText {
-        anchors.centerIn: parent
-        width: parent.width
-        visible: root.filteredRecords.length === 0
-        text: qsTr("No fuel records in this period")
-        horizontalAlignment: Text.AlignHCenter
-        wrapMode: Text.WordWrap
-      }
+      ColumnLayout {
+        id: summaryContent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: dp(16)
+        spacing: dp(10)
 
-      ListView {
-        id: recordsList
-        anchors.fill: parent
-        clip: true
-        model: root.filteredRecords
-        delegate: Item {
-          width: recordsList.width
-          height: recordContent.implicitHeight + dp(32) + px(1)
-
-          ColumnLayout {
-            id: recordContent
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.topMargin: dp(16)
-            spacing: dp(6)
-
-            RowLayout {
-              Layout.fillWidth: true
-              StyledText {
-                Layout.fillWidth: true
-                text: modelData.date
-                font.pixelSize: sp(16)
-                elide: Text.ElideRight
-              }
-              StyledText {
-                Layout.maximumWidth: recordContent.width * 0.5
-                text: modelData.totalCost + " €"
-                font.pixelSize: sp(18)
-                font.bold: true
-                elide: Text.ElideLeft
-              }
-            }
+        StyledText {
+          text: qsTr("Overview")
+          color: Theme.listItem.textColor
+          font.pixelSize: sp(18)
+          font.weight: Font.DemiBold
+        }
+        Repeater {
+          model: [
+            {label: qsTr("Records"), value: String(root.filteredRecords.length)},
+            {label: qsTr("Fuel added"), value: root.totals.liters.toFixed(2) + " L"},
+            {label: qsTr("Total cost"), value: root.totals.cost.toFixed(2) + " €"}
+          ]
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: dp(12)
             StyledText {
               Layout.fillWidth: true
-              text: qsTr("%1 km · %2 L").arg(modelData.mileage).arg(modelData.liters)
+              text: modelData.label
+              color: Theme.listItem.detailTextColor
               font.pixelSize: sp(14)
-              opacity: 0.65
-              wrapMode: Text.WordWrap
             }
-          }
-          Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: px(1)
-            color: Theme.dividerColor
+            StyledText {
+              text: modelData.value
+              color: Theme.listItem.textColor
+              font.pixelSize: sp(18)
+              font.weight: Font.DemiBold
+            }
           }
         }
       }
+    }
+
+    FuelRecordsList {
+      id: recordsList
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      records: root.filteredRecords
+      entranceAnimation: cardEntrance
+      emptyTitle: qsTr("No fuel records in this period")
+      errorMessage: dataModel.fuelRecordsError
+                    || (!root.isValidPeriod ? qsTr("Start date must be on or before end date.") : "")
+      recordsVisible: root.isValidPeriod && !dataModel.fuelRecordsError
     }
   }
 

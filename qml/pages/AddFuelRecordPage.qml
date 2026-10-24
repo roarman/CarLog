@@ -166,7 +166,7 @@ AppPage {
         Layout.fillWidth: true
         visible: root.saveError.length > 0
         text: root.saveError
-        color: "#b83232"
+        color: Theme.colors.tintColor
         wrapMode: Text.WordWrap
       }
     }

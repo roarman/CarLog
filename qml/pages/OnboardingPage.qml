@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 import Felgo
+import "../design"
 import "../components"
 
 AppPage {
   id: root
+  navigationBarHidden: true
 
   signal onboardingFinished(string carName)
 
@@ -76,6 +78,7 @@ AppPage {
       StyledTextField {
         id: carNameField
         Layout.fillWidth: true
+        backgroundColor: Design.inputBackgroundColor
         placeholderText: "Edit text here"
         width: dp(200)
       }
