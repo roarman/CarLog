@@ -144,11 +144,14 @@ Item {
     return true
   }
 
-  // For Testing
+  // Clear registration and fuel records for a fresh start.
   function resetOnboarding() {
     storage.setValue("carName", "")
     storage.setValue("onboardingCompleted", false)
+    storage.setValue("fuelRecords", [])
     root.carName = ""
+    root.fuelRecords = []
+    root.fuelRecordsError = ""
     root.onboardingCompleted = false
   }
 
