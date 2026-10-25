@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+<!-- tutorial.qdoc -->
+  <title>Build CarLog with Felgo | CarLog 0.1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="style/tutorial.css"></head>
+<body>
+<h1 class="title">Build CarLog with Felgo</h1>
+<!-- $$$index.html-description -->
+<div class="descr" id="details">
+<p>How much have you spent on fuel this month? Build CarLog with Felgo and QML to register a car, keep its fuel records, and compare spending by date.</p>
+    <div class="screenshot-grid">
+      <figure><a href="images/home.png"><img src="images/home.png" alt="CarLog Home with a Tesla vehicle card and two fuel records"></a><figcaption>Home shows the saved car and fuel records. Tap a record to edit it.</figcaption></figure>
+      <figure><a href="images/statistics.png"><img src="images/statistics.png" alt="CarLog Statistics showing two records, 67.50 liters and 120.90 euros"></a><figcaption>Statistics uses the same records, filtered by date.</figcaption></figure>
+    </div>
+    <h2 id="what-you-will-build">What you will build</h2>
+<p>You will connect the app's data model, build the onboarding controls, create a reusable record list and fuel form, and add validation and storage. The last steps calculate period totals and connect the circular page transition.</p>
+<p>Use Felgo with Qt 6.8.3. This guide assumes basic QML properties, signals, layouts, and JavaScript functions. It starts with a runnable app shell: the theme, vehicle card, date picker, navigation container, and animation components are supplied. We will build the fields, list delegate, and behavior that make those pieces work together.</p>
+    <p>Download <a href="downloads/carlog-starter.zip">the starter project</a> and unzip it into a new folder. Use <a href="downloads/carlog-solution.zip">the completed project</a> to check your work.</p>
+    <p>When changing a function or component below, replace its existing version. Keep the supplied imports, IDs, and surrounding layout unless the step says to change them: other bindings refer to those names.</p>
+<h2 id="1-connect-the-app-s-data-model">1. Connect the app's data model</h2>
+<p>A button, a saved value, and a page transition have different jobs. CarLog separates them so the same records can appear on both tabs:</p>
+<div class="table"><table class="generic">
+ <thead><tr class="qt-style"><th >File</th><th >Responsibility</th></tr></thead>
+<tr valign="top" class="odd"><td >qml/Main.qml</td><td >Owns Storage, Logic, DataModel, and the single NavigationStack.</td></tr>
+<tr valign="top" class="even"><td >qml/logic/Logic.qml</td><td >Declares the actions a page can request.</td></tr>
+<tr valign="top" class="odd"><td >qml/model/DataModel.qml</td><td >Validates changes, writes Storage, and exposes values to the pages.</td></tr>
+<tr valign="top" class="even"><td >qml/pages/</td><td >Collects input and displays model properties; requests actions through signals.</td></tr>
+</table></div>
+<p>Open Logic.qml. Its signals name the actions the app understands:</p>
+<pre class="cpp" translate="no">import QtQuick
+
+<span class="type">Item</span> {
+  signal <span class="type">onboardingFinished</span>(string carName)
+  signal <span class="type">onboardingReset</span>()
+  signal <span class="type">addFuelRecord</span>(var draft)
+  signal <span class="type">updateFuelRecord</span>(var recordId, var draft)
+  signal <span class="type">deleteFuelRecord</span>(var recordId)
+}</pre>
+<p>Signals do not save anything by themselves. DataModel listens to this Logic object through its dispatcher property. In Main.qml, replace the DataModel instance with:</p>
+<pre class="cpp" translate="no">  <span class="type">DataModel</span> {
+    <span class="name">id</span>: <span class="name">dataModel</span>
+    <span class="name">dispatcher</span>: <span class="name">logic</span> <span class="comment">// data model handles actions sent by logic</span>
+  }</pre>
+<p>For example, the form will call logic.addFuelRecord(draft). DataModel's matching onAddFuelRecord handler will process the draft. When the model assigns a new fuelRecords array, the lists bound to that property update. The page does not need to reload its list manually.</p>
+<p>Main creates these shared objects above the pages, making their IDs available in the pages' QML creation context. Keep storage, logic, and dataModel in Main; do not create another Storage object inside each page. The downloads already give Storage its own tutorial database.</p>
+<p>Run the app. The welcome heading and car should appear. There is no name field yet. In the next step, we will give that screen something to submit.</p>
+<h2 id="2-build-the-car-registration-controls">2. Build the car registration controls</h2>
+<p>In qml/pages/OnboardingPage.qml, add this code below the car image, inside the Column:</p>
+<pre class="cpp" translate="no">    RowLayout {
+      width: parent.width
+      spacing: dp(10)
+
+      StyledText {
+        text: &quot;Car Name&quot;
+      }
+
+      StyledTextField {
+        id: carNameField
+        Layout.fillWidth: true
+        backgroundColor: Design.inputBackgroundColor
+        placeholderText: &quot;Edit text here&quot;
+        width: dp(200)
+      }
+    }
+
+    StyledButton {
+      width: parent.width
+      text: qsTr(&quot;Register your car&quot;)
+      enabled: carNameField.text.trim().length &gt; 0
+      onClicked: root.onboardingFinished(carNameField.text.trim())
+    }</pre>
+<p>RowLayout places the label beside the field; Layout.fillWidth lets the field use the remaining width. The enabled binding follows the trimmed input, so the button stays disabled for an empty name or spaces. Pressing it emits onboardingFinished. Main forwards that request to Logic, and the model changes onboardingCompleted to open Home.</p>
+<p>Try spaces, then enter Tesla and press Register your car. Home should open. This first version only keeps registration in memory. Restart the app to return to onboarding before continuing.</p>
+    <figure class="screenshot"><a href="images/onboarding.png"><img src="images/onboarding.png" alt="Car name field and disabled registration button"></a><figcaption>The enabled binding prevents registration with an empty name.</figcaption></figure>
+    <h2 id="3-keep-the-car-name-after-a-restart">3. Keep the car name after a restart</h2>
+<p>In qml/model/DataModel.qml, update completeOnboarding(name):</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">completeOnboarding</span>(name) {
+    const trimmedName = <span class="name">name</span>.<span class="name">trim</span>()
+    <span class="keyword">if</span> (<span class="name">trimmedName</span>.<span class="name">length</span> <span class="operator">===</span> <span class="number">0</span>)
+      <span class="keyword">return</span> <span class="number">false</span>
+
+    <span class="name">storage</span>.<span class="name">setValue</span>(<span class="string">&quot;carName&quot;</span>, <span class="name">trimmedName</span>)
+    <span class="name">storage</span>.<span class="name">setValue</span>(<span class="string">&quot;onboardingCompleted&quot;</span>, <span class="number">true</span>)
+    <span class="name">root</span>.<span class="name">carName</span> <span class="operator">=</span> <span class="name">trimmedName</span>
+    <span class="name">root</span>.<span class="name">onboardingCompleted</span> <span class="operator">=</span> <span class="number">true</span>
+    <span class="keyword">return</span> <span class="number">true</span>
+  }</pre>
+<p>Save the name and flag before changing onboardingCompleted in memory. Main listens to that property to decide when to open MainPage. Updating it last means the next screen sees the registered name.</p>
+<p>In the same file, update prepare() to restore the saved state:</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">prepare</span>() {
+    <span class="name">carName</span> <span class="operator">=</span> <span class="name">storage</span>.<span class="name">getValue</span>(<span class="string">&quot;carName&quot;</span>) <span class="operator">||</span> <span class="string">&quot;&quot;</span>
+    <span class="name">onboardingCompleted</span> <span class="operator">=</span> !!<span class="name">storage</span>.<span class="name">getValue</span>(<span class="string">&quot;onboardingCompleted&quot;</span>)
+    <span class="name">loadFuelRecords</span>()
+  }</pre>
+<p>prepare() runs when the model is created. Main waits for Felgo's launch screen to finish, opens onboarding, and also opens MainPage if registration was restored. One NavigationStack owns that history. Home and Statistics are tabs inside MainPage, not separate stacks. The supplied loadFuelRecords() reads the saved array, treats a missing key as an empty list, and puts read errors in fuelRecordsError for the list to display.</p>
+<p>Register Tesla, restart the app, and check that Home still shows Tesla. Tap Reset: it clears registration and all fuel records and returns to onboarding. Register Tesla again to continue on Home.</p>
+<h2 id="4-build-a-reusable-fuel-record-list">4. Build a reusable fuel-record list</h2>
+<p>Home and Statistics need the same cards, empty message, and error display. qml/components/FuelRecordsList.qml already has the outer layout and status messages. Its records property is the input; recordClicked is the output. The ListView inside it has no delegate yet, so it cannot draw a record.</p>
+<p>Replace that ListView with:</p>
+<pre class="cpp" translate="no">    <span class="type">ListView</span> {
+      <span class="name">id</span>: <span class="name">recordsView</span>
+      <span class="name">anchors</span>.fill: <span class="name">parent</span>
+      <span class="name">clip</span>: <span class="number">true</span>
+      <span class="name">spacing</span>: <span class="name">dp</span>(<span class="number">12</span>)
+      <span class="name">model</span>: <span class="name">root</span>.<span class="name">records</span>
+      <span class="name">delegate</span>: <span class="name">Item</span> {
+        <span class="name">id</span>: <span class="name">recordItem</span>
+        <span class="name">width</span>: <span class="name">recordsView</span>.<span class="name">width</span>
+        <span class="name">height</span>: <span class="name">recordContent</span>.<span class="name">implicitHeight</span> <span class="operator">+</span> <span class="name">dp</span>(<span class="number">32</span>)
+        <span class="comment">// Stagger the first visible cards without delaying long lists.</span>
+        readonly property <span class="type">real</span> <span class="name">cardProgress</span>: <span class="name">root</span>.<span class="name">entranceAnimation</span> ? <span class="name">root</span>.<span class="name">entranceAnimation</span>.<span class="name">progressForCard</span>(<span class="name">index</span> <span class="operator">+</span> <span class="number">2</span>) : <span class="number">1</span>
+
+        <span class="type">Rectangle</span> {
+          <span class="name">anchors</span>.fill: <span class="name">parent</span>
+          <span class="name">radius</span>: <span class="name">dp</span>(<span class="number">16</span>)
+          <span class="name">color</span>: <span class="name">recordMouse</span>.<span class="name">pressed</span> ? <span class="name">Theme</span>.<span class="name">listItem</span>.<span class="name">selectedBackgroundColor</span>
+                                    : <span class="name">Theme</span>.<span class="name">listItem</span>.<span class="name">backgroundColor</span>
+          <span class="name">border</span>.color: <span class="name">Theme</span>.<span class="name">listItem</span>.<span class="name">dividerColor</span>
+          <span class="name">border</span>.width: <span class="name">px</span>(<span class="number">1</span>)
+          <span class="name">opacity</span>: <span class="name">recordItem</span>.<span class="name">cardProgress</span>
+          <span class="name">transform</span>: <span class="name">Translate</span> { <span class="name">y</span>: (<span class="number">1</span> <span class="operator">-</span> <span class="name">recordItem</span>.<span class="name">cardProgress</span>) <span class="operator">*</span> <span class="name">dp</span>(<span class="number">64</span>) }
+
+          <span class="type">MouseArea</span> {
+            <span class="name">id</span>: <span class="name">recordMouse</span>
+            <span class="name">anchors</span>.fill: <span class="name">parent</span>
+            <span class="name">cursorShape</span>: <span class="name">Qt</span>.<span class="name">PointingHandCursor</span>
+            <span class="name">enabled</span>: <span class="name">root</span>.<span class="name">editable</span>
+            <span class="name">onClicked</span>: <span class="name">root</span>.<span class="name">recordClicked</span>(<span class="name">modelData</span>)
+          }
+
+          <span class="type">ColumnLayout</span> {
+            <span class="name">id</span>: <span class="name">recordContent</span>
+            <span class="name">anchors</span>.left: <span class="name">parent</span>.<span class="name">left</span>
+            <span class="name">anchors</span>.right: <span class="name">parent</span>.<span class="name">right</span>
+            <span class="name">anchors</span>.top: <span class="name">parent</span>.<span class="name">top</span>
+            <span class="name">anchors</span>.margins: <span class="name">dp</span>(<span class="number">16</span>)
+            <span class="name">spacing</span>: <span class="name">dp</span>(<span class="number">10</span>)
+
+            <span class="type">RowLayout</span> {
+              <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+              <span class="name">spacing</span>: <span class="name">dp</span>(<span class="number">12</span>)
+              <span class="type">StyledText</span> {
+                <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+                <span class="name">text</span>: <span class="name">modelData</span>.<span class="name">date</span>
+                <span class="name">color</span>: <span class="name">Theme</span>.<span class="name">listItem</span>.<span class="name">textColor</span>
+                <span class="name">font</span>.pixelSize: <span class="name">sp</span>(<span class="number">15</span>)
+                <span class="name">font</span>.weight: <span class="name">Font</span>.<span class="name">Medium</span>
+                <span class="name">elide</span>: <span class="name">Text</span>.<span class="name">ElideRight</span>
+              }
+              <span class="type">StyledText</span> {
+                <span class="name">Layout</span>.maximumWidth: <span class="name">recordContent</span>.<span class="name">width</span> <span class="operator">*</span> <span class="number">0.5</span>
+                <span class="name">text</span>: <span class="name">modelData</span>.<span class="name">totalCost</span> <span class="operator">+</span> <span class="string">&quot; €&quot;</span>
+                <span class="name">color</span>: <span class="name">Theme</span>.<span class="name">listItem</span>.<span class="name">textColor</span>
+                <span class="name">horizontalAlignment</span>: <span class="name">Text</span>.<span class="name">AlignRight</span>
+                <span class="name">font</span>.pixelSize: <span class="name">sp</span>(<span class="number">20</span>)
+                <span class="name">font</span>.weight: <span class="name">Font</span>.<span class="name">DemiBold</span>
+                <span class="name">elide</span>: <span class="name">Text</span>.<span class="name">ElideLeft</span>
+              }
+            }
+            <span class="type">StyledText</span> {
+              <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+              <span class="name">text</span>: <span class="name">qsTr</span>(<span class="string">&quot;%1 km · %2 L&quot;</span>).<span class="name">arg</span>(<span class="name">modelData</span>.<span class="name">mileage</span>).<span class="name">arg</span>(<span class="name">modelData</span>.<span class="name">liters</span>)
+              <span class="name">font</span>.pixelSize: <span class="name">sp</span>(<span class="number">14</span>)
+              <span class="name">color</span>: <span class="name">Theme</span>.<span class="name">listItem</span>.<span class="name">detailTextColor</span>
+              <span class="name">wrapMode</span>: <span class="name">Text</span>.<span class="name">WordWrap</span>
+            }
+          }
+        }
+      }
+    }</pre>
+<p>The model is an array of record objects. ListView creates a delegate for each entry and exposes that object as modelData. The first RowLayout puts the date and cost on opposite sides; the second line shows mileage and liters. Giving the delegate the view's width keeps every card aligned.</p>
+<p>The MouseArea sends the selected object through recordClicked instead of opening a page itself. That lets Statistics reuse this component without editing: its editable property remains false. Theme.listItem supplies the card colors to both tabs. cardProgress changes opacity and translation, leaving the layout's final positions intact during the entrance animation.</p>
+<p>In qml/pages/HomePage.qml, replace the empty Item below the recordActions RowLayout with:</p>
+<pre class="cpp" translate="no">    <span class="type">FuelRecordsList</span> {
+      <span class="name">id</span>: <span class="name">recordsList</span>
+      <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+      <span class="name">Layout</span>.fillHeight: <span class="number">true</span>
+      <span class="name">spacing</span>: <span class="name">dp</span>(<span class="number">18</span>)
+      <span class="name">records</span>: <span class="name">root</span>.<span class="name">fuelRecords</span>
+      <span class="name">editable</span>: <span class="number">true</span>
+      <span class="name">entranceAnimation</span>: <span class="name">cardEntrance</span>
+      <span class="name">emptyDescription</span>: <span class="name">qsTr</span>(<span class="string">&quot;Tap + to add your first fuel record.&quot;</span>)
+      <span class="name">emptyOpacity</span>: <span class="name">root</span>.<span class="name">entranceProgress</span>
+      <span class="name">errorMessage</span>: <span class="name">dataModel</span>.<span class="name">fuelRecordsError</span>
+      <span class="name">onRecordClicked</span>: <span class="keyword">function</span>(record) { <span class="name">root</span>.<span class="name">editFuelRecordRequested</span>(<span class="name">record</span>) }
+    }</pre>
+<p>records binds the model data to the list. errorMessage and emptyDescription choose its status text. Passing cardEntrance keeps the list in the same animation sequence as the vehicle card and add button.</p>
+<p>Run the app. Home should show the empty-list message below Fuel records. To check the cards before connecting storage, temporarily replace HomePage's fuelRecords property with this preview array:</p>
+<pre class="cpp" translate="no">  property var fuelRecords: [
+    {id: &quot;preview-2&quot;, date: &quot;2026-10-20&quot;, mileage: 42400,
+     liters: 32, totalCost: 58.40},
+    {id: &quot;preview-1&quot;, date: &quot;2026-10-10&quot;, mileage: 42000,
+     liters: 35.5, totalCost: 62.50}
+  ]</pre>
+<p>You should see two cards, with October 20 above October 10. Check the date and cost on the first line, then mileage and liters below. These records exist only in Home; they do not change DataModel or Storage. Tapping a card will not open the form until we connect editing in step 7.</p>
+    <figure class="screenshot"><a href="images/list-preview.png"><img src="images/list-preview.png" alt="Two temporary fuel-record cards on Home before storage is connected"></a><figcaption>The preview array lets us check the card layout before saving real records.</figcaption></figure>
+    <p>Before continuing, restore the model binding so saved records will reach the list in step 7:</p>
+<pre class="cpp" translate="no">  property <span class="type">var</span> <span class="name">fuelRecords</span>: <span class="name">dataModel</span>.<span class="name">fuelRecords</span></pre>
+<p>Run again: the empty-list message should return. The + button already sends addFuelRecordRequested; we will connect its handler after building the form. The temporary preview array must be gone before that work starts.</p>
+<h2 id="5-build-the-fuel-record-form">5. Build the fuel-record form</h2>
+<p>qml/pages/AddFuelRecordPage.qml supplies an AppPage with a scrollable form, a fixed save bar, and a DatePickerModal. Keeping the save bar outside AppFlickable lets the fields scroll while the action stays visible. Its bottom margin follows getApplication().keyboardHeight so the keyboard can move it out of the way.</p>
+<p>Inside AppFlickable's ColumnLayout, replace the three QtObject field placeholders with the following fields, in order. Put the date field first, before Odometer, and leave the error label after the fields:</p>
+<pre class="cpp" translate="no">      <span class="type">FuelRecordField</span> {
+        <span class="name">id</span>: <span class="name">dateField</span>
+        <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+        <span class="name">label</span>: <span class="name">qsTr</span>(<span class="string">&quot;Date&quot;</span>)
+        <span class="name">text</span>: <span class="name">Qt</span>.<span class="name">formatDate</span>(<span class="name">root</span>.<span class="name">selectedDate</span>, <span class="string">&quot;yyyy-MM-dd&quot;</span>)
+        <span class="name">placeholderText</span>: <span class="string">&quot;YYYY-MM-DD&quot;</span>
+        <span class="name">readOnly</span>: <span class="number">true</span>
+        <span class="name">clickEnabled</span>: <span class="number">true</span>
+        <span class="name">errorText</span>: <span class="name">root</span>.<span class="name">isShowValidationErrors</span> ? (<span class="name">root</span>.<span class="name">validation</span>.<span class="name">errors</span>.<span class="name">date</span> <span class="operator">||</span> <span class="string">&quot;&quot;</span>) : <span class="string">&quot;&quot;</span>
+        <span class="name">onClicked</span>: {
+          <span class="name">Qt</span>.<span class="name">inputMethod</span>.<span class="name">hide</span>()
+          <span class="name">datePickerModal</span>.<span class="name">openForDate</span>(<span class="name">root</span>.<span class="name">selectedDate</span>)
+        }
+      }
+      <span class="type">FuelRecordField</span> {
+        <span class="name">id</span>: <span class="name">odometerField</span>
+        <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+        <span class="name">label</span>: <span class="name">qsTr</span>(<span class="string">&quot;Odometer (km)&quot;</span>)
+        <span class="name">placeholderText</span>: <span class="name">qsTr</span>(<span class="string">&quot;e.g. 42500&quot;</span>)
+        <span class="name">inputMethodHints</span>: <span class="name">Qt</span>.<span class="name">ImhDigitsOnly</span>
+        <span class="name">errorText</span>: <span class="name">root</span>.<span class="name">isShowValidationErrors</span> ? (<span class="name">root</span>.<span class="name">validation</span>.<span class="name">errors</span>.<span class="name">mileage</span> <span class="operator">||</span> <span class="string">&quot;&quot;</span>) : <span class="string">&quot;&quot;</span>
+      }
+      <span class="type">FuelRecordField</span> {
+        <span class="name">id</span>: <span class="name">fuelField</span>
+        <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+        <span class="name">label</span>: <span class="name">qsTr</span>(<span class="string">&quot;Fuel added (L)&quot;</span>)
+        <span class="name">placeholderText</span>: <span class="name">qsTr</span>(<span class="string">&quot;e.g. 35.5&quot;</span>)
+        <span class="name">inputMethodHints</span>: <span class="name">Qt</span>.<span class="name">ImhFormattedNumbersOnly</span>
+        <span class="name">errorText</span>: <span class="name">root</span>.<span class="name">isShowValidationErrors</span> ? (<span class="name">root</span>.<span class="name">validation</span>.<span class="name">errors</span>.<span class="name">liters</span> <span class="operator">||</span> <span class="string">&quot;&quot;</span>) : <span class="string">&quot;&quot;</span>
+      }
+      <span class="type">FuelRecordField</span> {
+        <span class="name">id</span>: <span class="name">costField</span>
+        <span class="name">Layout</span>.fillWidth: <span class="number">true</span>
+        <span class="name">label</span>: <span class="name">qsTr</span>(<span class="string">&quot;Total cost (€)&quot;</span>)
+        <span class="name">placeholderText</span>: <span class="name">qsTr</span>(<span class="string">&quot;e.g. 62.50&quot;</span>)
+        <span class="name">inputMethodHints</span>: <span class="name">Qt</span>.<span class="name">ImhFormattedNumbersOnly</span>
+        <span class="name">errorText</span>: <span class="name">root</span>.<span class="name">isShowValidationErrors</span> ? (<span class="name">root</span>.<span class="name">validation</span>.<span class="name">errors</span>.<span class="name">totalCost</span> <span class="operator">||</span> <span class="string">&quot;&quot;</span>) : <span class="string">&quot;&quot;</span>
+      }</pre>
+<p>FuelRecordField combines a label, a text field, and an error message. Its text alias exposes the inner field's value. The inputMethodHints ask for a suitable keyboard; they do not validate pasted or typed values.</p>
+<p>Date is read-only because the user selects it in a sheet. openForDate() sets the wheel's current date and opens the supplied modal. Its dateSelected signal updates selectedDate; the field's text binding then displays the change. This keeps a Date value in the page and formats it only for display or saving.</p>
+<p>The page already gathers the values in this draft binding. Read it before continuing; do not add a second copy:</p>
+<pre class="cpp" translate="no">  readonly property <span class="type">var</span> <span class="name">draft</span>: ({
+    date: <span class="name">Qt</span>.<span class="name">formatDate</span>(<span class="name">selectedDate</span>, <span class="string">&quot;yyyy-MM-dd&quot;</span>),
+    mileage: <span class="name">odometerField</span>.<span class="name">text</span>,
+    liters: <span class="name">fuelField</span>.<span class="name">text</span>,
+    totalCost: <span class="name">costField</span>.<span class="name">text</span>
+  })</pre>
+<p>The three number fields still contain strings. The next step will turn them into numbers and reject invalid input. For now, keep the supplied save bar: its button calls submitRecord(), which we will implement next.</p>
+<p>Main has a fuelRecordComponent containing AddFuelRecordPage. Its success signals close the page:</p>
+<pre class="cpp" translate="no">    <span class="type">AddFuelRecordPage</span> {
+      <span class="name">onSaved</span>: <span class="name">appNavigation</span>.<span class="name">pop</span>()
+      <span class="name">onDeleted</span>: <span class="name">appNavigation</span>.<span class="name">pop</span>()
+    }</pre>
+<p>In Main.qml's Connections targeting appNavigation.currentPage, implement onAddFuelRecordRequested() so Home's + button opens that component:</p>
+<pre class="cpp" translate="no">    <span class="keyword">function</span> <span class="name">onAddFuelRecordRequested</span>() {
+      <span class="name">appNavigation</span>.<span class="name">push</span>(<span class="name">fuelRecordComponent</span>)
+    }</pre>
+<p>Home forwards its request through MainPage. Main owns the stack and pushes the form; the form does not need to know which screen opened it. Tap + on Home and check all four fields. Open Date, choose another date, and tap Done. Reopen the sheet and use Cancel, then the form's back button to return to Home. Saving is not connected yet.</p>
+    <figure class="screenshot"><a href="images/fuel-form.png"><img src="images/fuel-form.png" alt="Fuel form with date, odometer, liters, and cost in euros"></a><figcaption>The fields scroll above the fixed save button. Date opens a separate sheet.</figcaption></figure>
+    <h2 id="6-validate-input-before-sending-an-action">6. Validate input before sending an action</h2>
+<p>In qml/logic/FuelRecordValidation.js, replace validate(draft). Keep the supplied numberText() and isValidDate() helpers:</p>
+<pre class="cpp" translate="no">function validate(draft) {
+  draft = draft || {}
+  const errors = {}
+  const date = String(draft.date || &quot;&quot;)
+  const mileageText = numberText(draft.mileage)
+  const litersText = numberText(draft.liters)
+  const costText = numberText(draft.totalCost)
+  const mileage = Number(mileageText)
+  const liters = Number(litersText)
+  const totalCost = Number(costText)
+
+  if (!isValidDate(date))
+    errors.date = qsTr(&quot;Choose a valid date on or before today.&quot;)
+  if (!mileageText || !Number.isFinite(mileage) || mileage &lt; 0)
+    errors.mileage = qsTr(&quot;Enter an odometer reading of 0 or more.&quot;)
+  if (!litersText || !Number.isFinite(liters) || liters &lt;= 0)
+    errors.liters = qsTr(&quot;Enter a fuel amount above 0.&quot;)
+  if (!costText || !Number.isFinite(totalCost) || totalCost &lt; 0)
+    errors.totalCost = qsTr(&quot;Enter a cost of 0 or more.&quot;)
+
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors: errors,
+    record: { date: date, mileage: mileage, liters: liters, totalCost: totalCost }
+  }
+}</pre>
+<p>A blank field and the number zero need different treatment: Number(&quot;&quot;) returns zero. Checking the trimmed text first prevents a blank odometer from passing the numeric check. Mileage and cost may be zero; liters must be greater than zero. numberText() also accepts a decimal comma. isValidDate() rejects invalid or future dates.</p>
+<p>The result contains valid, errors keyed by draft property, and a record with numeric values. The form's errorText bindings use those same keys. They are shown only after isShowValidationErrors becomes true, so an untouched form does not greet the user with errors.</p>
+<p>In AddFuelRecordPage.qml, implement submitRecord():</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">submitRecord</span>() {
+    <span class="keyword">if</span> (<span class="name">isBusy</span>)
+      <span class="keyword">return</span>
+    <span class="name">isShowValidationErrors</span> <span class="operator">=</span> <span class="number">true</span>
+    <span class="name">saveError</span> <span class="operator">=</span> <span class="string">&quot;&quot;</span>
+    <span class="keyword">if</span> (!<span class="name">validation</span>.<span class="name">valid</span>)
+      <span class="keyword">return</span>
+    <span class="name">isSaving</span> <span class="operator">=</span> <span class="number">true</span>
+    <span class="keyword">if</span> (<span class="name">isEditing</span>)
+      <span class="name">logic</span>.<span class="name">updateFuelRecord</span>(<span class="name">recordToEdit</span>.<span class="name">id</span>, <span class="name">draft</span>)
+    <span class="keyword">else</span>
+      <span class="name">logic</span>.<span class="name">addFuelRecord</span>(<span class="name">draft</span>)
+  }</pre>
+<p>draft and validation are bindings, so they reflect the latest input. The early return keeps invalid data on the form. With valid input, the page requests an add or update through Logic. isSaving prevents a second submission; the supplied model Connections clear that state on success or failure.</p>
+<p>On Home, tap + and try zero liters or a blank Odometer. The page should show the relevant error and stay open. Correct the values and save again: the starter model reports that saving is not connected yet. The form stays open with your input intact. Go back to Home before continuing.</p>
+<h2 id="7-save-edit-and-delete-records">7. Save, edit, and delete records</h2>
+<p>DataModel owns the saved array so both tabs observe the same state.</p>
+<h3 id="save-records">Save records</h3>
+<p>First implement storeFuelRecords(records) in qml/model/DataModel.qml:</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">storeFuelRecords</span>(records) {
+    <span class="name">lastStorageError</span> <span class="operator">=</span> <span class="number">null</span>
+    <span class="name">storage</span>.<span class="name">setValue</span>(<span class="string">&quot;fuelRecords&quot;</span>, <span class="name">records</span>)
+    <span class="comment">// onStorageError sets lastStorageError during setValue(), before it returns.</span>
+    <span class="keyword">if</span> (<span class="name">lastStorageError</span>)
+      <span class="keyword">return</span> <span class="number">false</span>
+    <span class="name">fuelRecords</span> <span class="operator">=</span> <span class="name">records</span>
+    <span class="keyword">return</span> <span class="number">true</span>
+  }</pre>
+<p>Storage finishes the call before returning. If it emits storageError, the supplied handler sets lastStorageError during that call. Update fuelRecords only after success, keeping the visible list consistent with the saved array. Assigning a new array also notifies QML bindings.</p>
+<p>In the same file, implement saveFuelRecord(draft, recordId):</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">saveFuelRecord</span>(draft, recordId) {
+    const result = <span class="name">FuelRecordValidation</span>.<span class="name">validate</span>(<span class="name">draft</span>)
+    <span class="keyword">if</span> (!<span class="name">result</span>.<span class="name">valid</span>) {
+      <span class="name">fuelRecordSaveFailed</span>(<span class="name">result</span>.<span class="name">errors</span>, <span class="string">&quot;&quot;</span>)
+      <span class="keyword">return</span>
+    }
+    <span class="keyword">if</span> (<span class="name">fuelRecordsError</span>) {
+      <span class="name">fuelRecordSaveFailed</span>({}, <span class="name">fuelRecordsError</span>)
+      <span class="keyword">return</span>
+    }
+
+    const updated = <span class="name">fuelRecords</span>.<span class="name">slice</span>()
+    <span class="keyword">if</span> (<span class="name">recordId</span> <span class="operator">!==</span> <span class="name">undefined</span>) {
+      const index = <span class="name">updated</span>.<span class="name">findIndex</span>(<span class="keyword">function</span>(record) { <span class="keyword">return</span> <span class="name">record</span>.<span class="name">id</span> <span class="operator">===</span> <span class="name">recordId</span> })
+      <span class="keyword">if</span> (<span class="name">index</span> <span class="operator">&lt;</span> <span class="number">0</span>) {
+        <span class="name">fuelRecordSaveFailed</span>({}, <span class="name">qsTr</span>(<span class="string">&quot;This record no longer exists. Go back and select another record.&quot;</span>))
+        <span class="keyword">return</span>
+      }
+      <span class="name">updated</span>[<span class="name">index</span>] <span class="operator">=</span> {
+        id: <span class="name">updated</span>[<span class="name">index</span>].<span class="name">id</span>,
+        date: <span class="name">result</span>.<span class="name">record</span>.<span class="name">date</span>,
+        mileage: <span class="name">result</span>.<span class="name">record</span>.<span class="name">mileage</span>,
+        liters: <span class="name">result</span>.<span class="name">record</span>.<span class="name">liters</span>,
+        totalCost: <span class="name">result</span>.<span class="name">record</span>.<span class="name">totalCost</span>
+      }
+    } <span class="keyword">else</span> {
+      <span class="name">updated</span>.<span class="name">unshift</span>({
+        id: <span class="name">createRecordId</span>(),
+        date: <span class="name">result</span>.<span class="name">record</span>.<span class="name">date</span>,
+        mileage: <span class="name">result</span>.<span class="name">record</span>.<span class="name">mileage</span>,
+        liters: <span class="name">result</span>.<span class="name">record</span>.<span class="name">liters</span>,
+        totalCost: <span class="name">result</span>.<span class="name">record</span>.<span class="name">totalCost</span>
+      })
+    }
+    <span class="name">updated</span>.<span class="name">sort</span>(<span class="keyword">function</span>(a, b) { <span class="keyword">return</span> <span class="name">b</span>.<span class="name">date</span>.<span class="name">localeCompare</span>(<span class="name">a</span>.<span class="name">date</span>) })
+    <span class="keyword">if</span> (!<span class="name">storeFuelRecords</span>(<span class="name">updated</span>)) {
+      <span class="name">fuelRecordSaveFailed</span>({}, <span class="name">qsTr</span>(<span class="string">&quot;Could not save the record. Your input has been kept. Please try again.&quot;</span>))
+      <span class="keyword">return</span>
+    }
+    <span class="name">fuelRecordSaved</span>()
+  }</pre>
+<p>The model validates again so every caller follows the same rules. slice() gives us a working array without changing the displayed list before saving. A new record gets an ID; an edit keeps its ID and replaces only its fields. Sorting yyyy-MM-dd dates puts the newest record first. The saved signal reaches the form, which emits saved so Main can pop it from the stack.</p>
+<p>Add these records from Home's + button:</p>
+<div class="table"><table class="generic">
+ <thead><tr class="qt-style"><th >Date</th><th >Odometer (km)</th><th >Fuel (L)</th><th >Cost (€)</th></tr></thead>
+<tr valign="top" class="odd"><td >2026-10-10</td><td >42000</td><td >35.5</td><td >62.50</td></tr>
+<tr valign="top" class="even"><td >2026-10-20</td><td >42400</td><td >32</td><td >58.40</td></tr>
+</table></div>
+<p>Home should show two cards, newest first. Restart and check that both remain. If saving fails, check storeFuelRecords() and lastStorageError.</p>
+<h3 id="edit-an-existing-record">Edit an existing record</h3>
+<p>To open an existing record, implement onEditFuelRecordRequested(record) in the same Main.qml Connections used for adding:</p>
+<pre class="cpp" translate="no">    <span class="keyword">function</span> <span class="name">onEditFuelRecordRequested</span>(record) {
+      <span class="name">appNavigation</span>.<span class="name">push</span>(<span class="name">fuelRecordComponent</span>, {recordToEdit: <span class="name">record</span>})
+    }</pre>
+<p>recordToEdit selects edit mode. The supplied Component.onCompleted handler fills the fields from that object, and submitRecord() sends an update action. The ID identifies the record even if its date or position changes.</p>
+<p>Tap a card on Home, change its cost, save, and reopen it to check the change. Restore the sample amount and save again before continuing.</p>
+<h3 id="delete-a-record">Delete a record</h3>
+<p>Implement deleteFuelRecord(recordId) in DataModel.qml:</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">deleteFuelRecord</span>(recordId) {
+    <span class="keyword">if</span> (<span class="name">fuelRecordsError</span>) {
+      <span class="name">fuelRecordDeleteFailed</span>(<span class="name">fuelRecordsError</span>)
+      <span class="keyword">return</span>
+    }
+    const updated = <span class="name">fuelRecords</span>.<span class="name">filter</span>(<span class="keyword">function</span>(record) { <span class="keyword">return</span> <span class="name">record</span>.<span class="name">id</span> <span class="operator">!==</span> <span class="name">recordId</span> })
+    <span class="keyword">if</span> (<span class="name">updated</span>.<span class="name">length</span> <span class="operator">===</span> <span class="name">fuelRecords</span>.<span class="name">length</span>) {
+      <span class="name">fuelRecordDeleteFailed</span>(<span class="name">qsTr</span>(<span class="string">&quot;This record no longer exists. Go back and select another record.&quot;</span>))
+      <span class="keyword">return</span>
+    }
+    <span class="keyword">if</span> (!<span class="name">storeFuelRecords</span>(<span class="name">updated</span>)) {
+      <span class="name">fuelRecordDeleteFailed</span>(<span class="name">qsTr</span>(<span class="string">&quot;Could not delete the record. Please try again.&quot;</span>))
+      <span class="keyword">return</span>
+    }
+    <span class="name">fuelRecordDeleted</span>()
+  }</pre>
+<p>filter() builds an array without the selected ID. The same storage helper saves it before the model announces success. The page already asks for confirmation through NativeDialog.confirm(); cancelling keeps the record. Its deleted signal closes the page after a successful deletion.</p>
+<p>Add a third record from Home, open it, and confirm its deletion. Home should return to the original two records, including after another restart.</p>
+<h2 id="8-reuse-the-records-for-period-totals">8. Reuse the records for period totals</h2>
+<p>In qml/pages/StatisticsPage.qml, implement filterRecords():</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">filterRecords</span>(records, includeAll, fromDate, toDate) {
+    <span class="keyword">if</span> (<span class="name">includeAll</span>)
+      <span class="keyword">return</span> <span class="name">records</span>
+    <span class="keyword">return</span> <span class="name">records</span>.<span class="name">filter</span>(<span class="keyword">function</span>(record) {
+      <span class="keyword">return</span> <span class="name">record</span>.<span class="name">date</span> <span class="operator">&gt;=</span> <span class="name">fromDate</span> <span class="operator">&amp;&amp;</span> <span class="name">record</span>.<span class="name">date</span> <span class="operator">&lt;=</span> <span class="name">toDate</span>
+    })
+  }</pre>
+<p>The date strings use the same yyyy-MM-dd format, so string comparison also gives date order. Both selected endpoints are included. filteredRecords feeds the shared FuelRecordsList; Statistics leaves editing disabled. We save one array of records and derive this view from it.</p>
+<p>Open Statistics and tap All time: both records should appear. Set From to 2026-10-01 and To to 2026-10-15: only October 10 remains. Set From later than To to see the period error, then restore October 1 to 15. Totals stay at zero until we implement calculateTotals() in the same file:</p>
+<pre class="cpp" translate="no">  <span class="keyword">function</span> <span class="name">calculateTotals</span>(records) {
+    let liters = <span class="number">0</span>
+    let cost = <span class="number">0</span>
+    <span class="keyword">for</span> (let record of <span class="name">records</span>) {
+      <span class="name">liters</span> <span class="operator">+=</span> <span class="name">record</span>.<span class="name">liters</span>
+      <span class="name">cost</span> <span class="operator">+=</span> <span class="name">record</span>.<span class="name">totalCost</span>
+    }
+    <span class="keyword">return</span> {liters: <span class="name">liters</span>, cost: <span class="name">cost</span>}
+  }</pre>
+<p>Sum filteredRecords rather than the full saved array, so the totals match the visible cards. The view formats both values to two decimal places. Bindings recalculate them when the records or dates change; storing totals separately would require keeping another saved value up to date.</p>
+<p>All time should show 2 records, 67.50 L, and 120.90 €. October 1 to 15 should show 1 record, 35.50 L, and 62.50 €. Predict the totals for October 16 to 20, then check them. Before reading the solution, try selecting October 20 as both endpoints: the record on that date should remain.</p>
+<h2 id="9-cover-the-screen-before-switching-pages">9. Cover the screen before switching pages</h2>
+<p>The car drives away as a circle grows to cover onboarding. We switch to Home behind that cover, then reveal it through an expanding circular opening. Finally, the cards slide into place.</p>
+<p>Main owns TransitionOverlay above the stack. OnboardingPage receives it through a property and requests registration with a signal; Main handles navigation.</p>
+<p>In OnboardingPage.qml, replace the register button's onClicked handler:</p>
+<pre class="cpp" translate="no">      <span class="name">onClicked</span>: {
+        <span class="keyword">if</span> (<span class="name">root</span>.<span class="name">departureRunning</span> <span class="operator">||</span> !<span class="name">root</span>.<span class="name">transitionOverlay</span> <span class="operator">||</span> <span class="name">root</span>.<span class="name">transitionOverlay</span>.<span class="name">running</span>
+            <span class="operator">||</span> <span class="name">carNameField</span>.<span class="name">text</span>.<span class="name">trim</span>().<span class="name">length</span> <span class="operator">===</span> <span class="number">0</span>)
+          <span class="keyword">return</span>
+
+        <span class="name">root</span>.<span class="name">pendingCarName</span> <span class="operator">=</span> <span class="name">carNameField</span>.<span class="name">text</span>.<span class="name">trim</span>()
+        <span class="name">root</span>.<span class="name">departureRunning</span> <span class="operator">=</span> <span class="number">true</span>
+        <span class="name">carDeparture</span>.<span class="name">start</span>()
+        <span class="name">root</span>.<span class="name">transitionOverlay</span>.<span class="name">start</span>()
+      }</pre>
+<p>carDeparture moves the car while transitionOverlay.start() starts the cover animation. Registration waits until the circle covers the screen. In the Connections targeting root.transitionOverlay, implement onCovered():</p>
+<pre class="cpp" translate="no">    <span class="keyword">function</span> <span class="name">onCovered</span>() {
+      <span class="name">root</span>.<span class="name">onboardingFinished</span>(<span class="name">root</span>.<span class="name">pendingCarName</span>)
+    }</pre>
+<p>onCovered() sends the registration signal. DataModel saves the name, and Main opens MainPage while the screen is covered. After navigation finishes, Main calls revealMainPage() to uncover Home. The cards wait until the reveal finishes, avoiding a flash of the finished layout before they move. If the screen stays covered, check onCovered().</p>
+<p>Keep MainPage's two Qt.callLater calls: they let child bindings and the lazily created tab finish initializing before the entrance animation starts.</p>
+<p>Return to Home, tap Reset, and register Tesla again. The car should leave, the screen become covered, and Home appear through the circle before the cards arrive in order. Try carDeparture's duration at 900 instead of 450, compare, then restore 450.</p>
+<p>Your CarLog app now remembers your car and fuel records between launches. You can add, edit, and delete records on Home, then use Statistics to see how much fuel you bought and what you spent over a selected period.</p>
+</div>
+<!-- @@@index.html -->
+</body>
+</html>
