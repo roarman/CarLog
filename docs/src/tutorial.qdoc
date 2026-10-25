@@ -1,0 +1,405 @@
+/*!
+    \page index.html
+    \title Build CarLog with Felgo
+
+    How much have you spent on fuel this month? Build CarLog with Felgo and QML
+    to register a car, keep its fuel records, and compare spending by date.
+
+    \raw HTML
+    <div class="screenshot-grid">
+      <figure><a href="images/home.png"><img src="images/home.png" alt="CarLog Home with a Tesla vehicle card and two fuel records"></a><figcaption>Home shows the saved car and fuel records. Tap a record to edit it.</figcaption></figure>
+      <figure><a href="images/statistics.png"><img src="images/statistics.png" alt="CarLog Statistics showing two records, 67.50 liters and 120.90 euros"></a><figcaption>Statistics uses the same records, filtered by date.</figcaption></figure>
+    </div>
+    \endraw
+
+    \section1 What you will build
+
+    You will connect the app's data model, build the onboarding controls,
+    create a reusable record list and fuel form, and add validation and storage.
+    The last steps calculate period totals and connect the circular page transition.
+
+    Use Felgo with Qt 6.8.3. This guide assumes basic QML properties, signals,
+    layouts, and JavaScript functions. It starts with a runnable app shell:
+    the theme, vehicle card, date picker, navigation container, and animation
+    components are supplied. We will build the fields, list delegate, and
+    behavior that make those pieces work together.
+
+    \raw HTML
+    <p>Download <a href="downloads/carlog-starter.zip">the starter project</a> and unzip it into a new folder. Use <a href="downloads/carlog-solution.zip">the completed project</a> to check your work.</p>
+    \endraw
+
+    When changing a function or component below, replace its existing version.
+    Keep the supplied imports, IDs, and surrounding layout unless the step
+    says to change them: other bindings refer to those names.
+
+    \section1 1. Connect the app's data model
+
+    A button, a saved value, and a page transition have different jobs.
+    CarLog separates them so the same records can appear on both tabs:
+
+    \table
+      \header \li File \li Responsibility
+      \row \li qml/Main.qml \li Owns Storage, Logic, DataModel, and the single NavigationStack.
+      \row \li qml/logic/Logic.qml \li Declares the actions a page can request.
+      \row \li qml/model/DataModel.qml \li Validates changes, writes Storage, and exposes values to the pages.
+      \row \li qml/pages/ \li Collects input and displays model properties; requests actions through signals.
+    \endtable
+
+    Open Logic.qml. Its signals name the actions the app understands:
+    \quotefile qml/logic/Logic.qml
+
+    Signals do not save anything by themselves. DataModel listens to this
+    Logic object through its dispatcher property. In Main.qml, replace the
+    DataModel instance with:
+    \quotefromfile qml/Main.qml
+    \skipto DataModel {
+    \printuntil /^  \}/
+
+    For example, the form will call logic.addFuelRecord(draft). DataModel's
+    matching onAddFuelRecord handler will process the draft. When the model
+    assigns a new fuelRecords array, the lists bound to that property update.
+    The page does not need to reload its list manually.
+
+    Main creates these shared objects above the pages, making their IDs
+    available in the pages' QML creation context. Keep storage, logic, and
+    dataModel in Main; do not create another Storage object inside each page.
+    The downloads already give Storage its own tutorial database.
+
+    Run the app. The welcome heading and car should appear. There is no name
+    field yet. In the next step, we will give that screen something to submit.
+
+    \section1 2. Build the car registration controls
+
+    In qml/pages/OnboardingPage.qml, add this code below the car image,
+    inside the Column:
+    \quotefile docs/snippets/onboarding-controls.inc
+
+    RowLayout places the label beside the field; Layout.fillWidth lets the
+    field use the remaining width. The enabled binding follows the trimmed
+    input, so the button stays disabled for an empty name or spaces.
+    Pressing it emits onboardingFinished. Main forwards that request to Logic,
+    and the model changes onboardingCompleted to open Home.
+
+    Try spaces, then enter Tesla and press Register your car. Home should open.
+    This first version only keeps registration in memory. Restart the app
+    to return to onboarding before continuing.
+
+    \raw HTML
+    <figure class="screenshot"><a href="images/onboarding.png"><img src="images/onboarding.png" alt="Car name field and disabled registration button"></a><figcaption>The enabled binding prevents registration with an empty name.</figcaption></figure>
+    \endraw
+
+    \section1 3. Keep the car name after a restart
+
+    In qml/model/DataModel.qml, update completeOnboarding(name):
+    \quotefromfile qml/model/DataModel.qml
+    \skipto function completeOnboarding(
+    \printuntil /^  \}/
+
+    Save the name and flag before changing onboardingCompleted in memory.
+    Main listens to that property to decide when to open MainPage. Updating
+    it last means the next screen sees the registered name.
+
+    In the same file, update prepare() to restore the saved state:
+    \quotefromfile qml/model/DataModel.qml
+    \skipto function prepare(
+    \printuntil /^  \}/
+
+    prepare() runs when the model is created. Main waits for Felgo's launch
+    screen to finish, opens onboarding, and also opens MainPage if registration
+    was restored. One NavigationStack owns that history. Home and Statistics
+    are tabs inside MainPage, not separate stacks. The supplied loadFuelRecords()
+    reads the saved array, treats a missing key as an empty list, and puts read
+    errors in fuelRecordsError for the list to display.
+
+    Register Tesla, restart the app, and check that Home still shows Tesla.
+    Tap Reset: it clears registration and all fuel records and returns to
+    onboarding. Register Tesla again to continue on Home.
+
+    \section1 4. Build a reusable fuel-record list
+
+    Home and Statistics need the same cards, empty message, and error display.
+    qml/components/FuelRecordsList.qml already has the outer layout and status
+    messages. Its records property is the input; recordClicked is the output.
+    The ListView inside it has no delegate yet, so it cannot draw a record.
+
+    Replace that ListView with:
+    \quotefromfile qml/components/FuelRecordsList.qml
+    \skipto ListView {
+    \printuntil /^    \}/
+
+    The model is an array of record objects. ListView creates a delegate for
+    each entry and exposes that object as modelData. The first RowLayout puts
+    the date and cost on opposite sides; the second line shows mileage and liters.
+    Giving the delegate the view's width keeps every card aligned.
+
+    The MouseArea sends the selected object through recordClicked instead of
+    opening a page itself. That lets Statistics reuse this component without
+    editing: its editable property remains false. Theme.listItem supplies
+    the card colors to both tabs. cardProgress changes opacity and translation,
+    leaving the layout's final positions intact during the entrance animation.
+
+    In qml/pages/HomePage.qml, replace the empty Item below the recordActions
+    RowLayout with:
+    \quotefromfile qml/pages/HomePage.qml
+    \skipto FuelRecordsList {
+    \printuntil /^    \}/
+
+    records binds the model data to the list. errorMessage and emptyDescription
+    choose its status text. Passing cardEntrance keeps the list in the same
+    animation sequence as the vehicle card and add button.
+
+    Run the app. Home should show the empty-list message below Fuel records.
+    To check the cards before connecting storage, temporarily replace HomePage's
+    fuelRecords property with this preview array:
+    \quotefile docs/snippets/preview-fuel-records.inc
+
+    You should see two cards, with October 20 above October 10. Check the
+    date and cost on the first line, then mileage and liters below. These
+    records exist only in Home; they do not change DataModel or Storage.
+    Tapping a card will not open the form until we connect editing in step 7.
+
+    \raw HTML
+    <figure class="screenshot"><a href="images/list-preview.png"><img src="images/list-preview.png" alt="Two temporary fuel-record cards on Home before storage is connected"></a><figcaption>The preview array lets us check the card layout before saving real records.</figcaption></figure>
+    \endraw
+
+    Before continuing, restore the model binding so saved records will reach
+    the list in step 7:
+    \quotefromfile qml/pages/HomePage.qml
+    \skipto property var fuelRecords:
+    \printuntil property var fuelRecords:
+
+    Run again: the empty-list message should return. The + button already
+    sends addFuelRecordRequested; we will connect its handler after building
+    the form. The temporary preview array must be gone before that work starts.
+
+    \section1 5. Build the fuel-record form
+
+    qml/pages/AddFuelRecordPage.qml supplies an AppPage with a scrollable form,
+    a fixed save bar, and a DatePickerModal. Keeping the save bar outside
+    AppFlickable lets the fields scroll while the action stays visible.
+    Its bottom margin follows getApplication().keyboardHeight so the keyboard
+    can move it out of the way.
+
+    Inside AppFlickable's ColumnLayout, replace the three QtObject field
+    placeholders with the following fields, in order. Put the date field first,
+    before Odometer, and leave the error label after the fields:
+    \quotefromfile qml/pages/AddFuelRecordPage.qml
+    \skipto FuelRecordField {
+    \printuntil /^      \}/
+    \skipto FuelRecordField {
+    \printuntil /^      \}/
+    \skipto FuelRecordField {
+    \printuntil /^      \}/
+    \skipto FuelRecordField {
+    \printuntil /^      \}/
+
+    FuelRecordField combines a label, a text field, and an error message.
+    Its text alias exposes the inner field's value. The inputMethodHints ask
+    for a suitable keyboard; they do not validate pasted or typed values.
+
+    Date is read-only because the user selects it in a sheet. openForDate()
+    sets the wheel's current date and opens the supplied modal. Its dateSelected
+    signal updates selectedDate; the field's text binding then displays the change.
+    This keeps a Date value in the page and formats it only for display or saving.
+
+    The page already gathers the values in this draft binding. Read it before
+    continuing; do not add a second copy:
+    \quotefromfile qml/pages/AddFuelRecordPage.qml
+    \skipto readonly property var draft:
+    \printuntil /^  \}\)/
+
+    The three number fields still contain strings. The next step will turn
+    them into numbers and reject invalid input. For now, keep the supplied
+    save bar: its button calls submitRecord(), which we will implement next.
+
+    Main has a fuelRecordComponent containing AddFuelRecordPage. Its success
+    signals close the page:
+    \quotefromfile qml/Main.qml
+    \skipto AddFuelRecordPage {
+    \printuntil /^    \}/
+
+    In Main.qml's Connections targeting appNavigation.currentPage, implement
+    onAddFuelRecordRequested() so Home's + button opens that component:
+    \quotefromfile qml/Main.qml
+    \skipto function onAddFuelRecordRequested(
+    \printuntil /^    \}/
+
+    Home forwards its request through MainPage. Main owns the stack and pushes
+    the form; the form does not need to know which screen opened it.
+    Tap + on Home and check all four fields. Open Date, choose another date,
+    and tap Done. Reopen the sheet and use Cancel, then the form's back button
+    to return to Home. Saving is not connected yet.
+
+    \raw HTML
+    <figure class="screenshot"><a href="images/fuel-form.png"><img src="images/fuel-form.png" alt="Fuel form with date, odometer, liters, and cost in euros"></a><figcaption>The fields scroll above the fixed save button. Date opens a separate sheet.</figcaption></figure>
+    \endraw
+
+    \section1 6. Validate input before sending an action
+
+    In qml/logic/FuelRecordValidation.js, replace validate(draft). Keep the
+    supplied numberText() and isValidDate() helpers:
+    \quotefromfile qml/logic/FuelRecordValidation.js
+    \skipto function validate(
+    \printuntil /^\}/
+
+    A blank field and the number zero need different treatment: Number("")
+    returns zero. Checking the trimmed text first prevents a blank odometer
+    from passing the numeric check. Mileage and cost may be zero; liters must
+    be greater than zero. numberText() also accepts a decimal comma.
+    isValidDate() rejects invalid or future dates.
+
+    The result contains valid, errors keyed by draft property, and a record
+    with numeric values. The form's errorText bindings use those same keys. They are shown only after isShowValidationErrors becomes true,
+    so an untouched form does not greet the user with errors.
+
+    In AddFuelRecordPage.qml, implement submitRecord():
+    \quotefromfile qml/pages/AddFuelRecordPage.qml
+    \skipto function submitRecord(
+    \printuntil /^  \}/
+
+    draft and validation are bindings, so they reflect the latest input.
+    The early return keeps invalid data on the form. With valid input, the
+    page requests an add or update through Logic. isSaving prevents a second submission;
+    the supplied model Connections clear that state on success or failure.
+
+    On Home, tap + and try zero liters or a blank Odometer. The page should
+    show the relevant error and stay open. Correct the values and save again:
+    the starter model reports that saving is not connected yet. The form
+    stays open with your input intact. Go back to Home before continuing.
+
+    \section1 7. Save, edit, and delete records
+
+    DataModel owns the saved array so both tabs observe the same state.
+
+    \section2 Save records
+
+    First implement storeFuelRecords(records) in qml/model/DataModel.qml:
+    \quotefromfile qml/model/DataModel.qml
+    \skipto function storeFuelRecords(
+    \printuntil /^  \}/
+
+    Storage finishes the call before returning. If it emits storageError,
+    the supplied handler sets lastStorageError during that call. Update
+    fuelRecords only after success, keeping the visible list consistent with
+    the saved array. Assigning a new array also notifies QML bindings.
+
+    In the same file, implement saveFuelRecord(draft, recordId):
+    \quotefromfile qml/model/DataModel.qml
+    \skipto function saveFuelRecord(
+    \printuntil /^  \}/
+
+    The model validates again so every caller follows the same rules. slice()
+    gives us a working array without changing the displayed list before saving.
+    A new record gets an ID; an edit keeps its ID and replaces only its fields.
+    Sorting yyyy-MM-dd dates puts the newest record first. The saved signal
+    reaches the form, which emits saved so Main can pop it from the stack.
+
+    Add these records from Home's + button:
+    \table
+      \header \li Date \li Odometer (km) \li Fuel (L) \li Cost (€)
+      \row \li 2026-10-10 \li 42000 \li 35.5 \li 62.50
+      \row \li 2026-10-20 \li 42400 \li 32 \li 58.40
+    \endtable
+
+    Home should show two cards, newest first. Restart and check that both
+    remain. If saving fails, check storeFuelRecords() and lastStorageError.
+
+    \section2 Edit an existing record
+
+    To open an existing record, implement onEditFuelRecordRequested(record)
+    in the same Main.qml Connections used for adding:
+    \quotefromfile qml/Main.qml
+    \skipto function onEditFuelRecordRequested(
+    \printuntil /^    \}/
+
+    recordToEdit selects edit mode. The supplied Component.onCompleted handler
+    fills the fields from that object, and submitRecord() sends an update action.
+    The ID identifies the record even if its date or position changes.
+
+    Tap a card on Home, change its cost, save, and reopen it to check the change.
+    Restore the sample amount and save again before continuing.
+
+    \section2 Delete a record
+
+    Implement deleteFuelRecord(recordId) in DataModel.qml:
+    \quotefromfile qml/model/DataModel.qml
+    \skipto function deleteFuelRecord(
+    \printuntil /^  \}/
+
+    filter() builds an array without the selected ID. The same storage helper
+    saves it before the model announces success. The page already asks for
+    confirmation through NativeDialog.confirm(); cancelling keeps the record.
+    Its deleted signal closes the page after a successful deletion.
+
+    Add a third record from Home, open it, and confirm its deletion.
+    Home should return to the original two records, including after another restart.
+
+    \section1 8. Reuse the records for period totals
+
+    In qml/pages/StatisticsPage.qml, implement filterRecords():
+    \quotefromfile qml/pages/StatisticsPage.qml
+    \skipto function filterRecords(
+    \printuntil /^  \}/
+
+    The date strings use the same yyyy-MM-dd format, so string comparison also
+    gives date order. Both selected endpoints are included. filteredRecords
+    feeds the shared FuelRecordsList; Statistics leaves editing disabled.
+    We save one array of records and derive this view from it.
+
+    Open Statistics and tap All time: both records should appear. Set From to
+    2026-10-01 and To to 2026-10-15: only October 10 remains. Set From later
+    than To to see the period error, then restore October 1 to 15.
+    Totals stay at zero until we implement calculateTotals() in the same file:
+    \quotefromfile qml/pages/StatisticsPage.qml
+    \skipto function calculateTotals(
+    \printuntil /^  \}/
+
+    Sum filteredRecords rather than the full saved array, so the totals match
+    the visible cards. The view formats both values to two decimal places.
+    Bindings recalculate them when the records or dates change; storing totals
+    separately would require keeping another saved value up to date.
+
+    All time should show 2 records, 67.50 L, and 120.90 €. October 1 to 15
+    should show 1 record, 35.50 L, and 62.50 €. Predict the totals for October
+    16 to 20, then check them. Before reading the solution, try selecting
+    October 20 as both endpoints: the record on that date should remain.
+
+    \section1 9. Cover the screen before switching pages
+
+    The car drives away as a circle grows to cover onboarding. We switch to
+    Home behind that cover, then reveal it through an expanding circular opening.
+    Finally, the cards slide into place.
+
+    Main owns TransitionOverlay above the stack. OnboardingPage receives it
+    through a property and requests registration with a signal; Main handles navigation.
+
+    In OnboardingPage.qml, replace the register button's onClicked handler:
+    \quotefromfile qml/pages/OnboardingPage.qml
+    \skipto onClicked: {
+    \printuntil /^      \}/
+
+    carDeparture moves the car while transitionOverlay.start() starts the cover
+    animation. Registration waits until the circle covers the screen.
+    In the Connections targeting root.transitionOverlay, implement onCovered():
+    \quotefromfile qml/pages/OnboardingPage.qml
+    \skipto function onCovered()
+    \printuntil /^    \}/
+
+    onCovered() sends the registration signal. DataModel saves the name, and
+    Main opens MainPage while the screen is covered. After navigation finishes,
+    Main calls revealMainPage() to uncover Home. The cards wait until the reveal
+    finishes, avoiding a flash of the finished layout before they move.
+    If the screen stays covered, check onCovered().
+
+    Keep MainPage's two Qt.callLater calls: they let child bindings and the
+    lazily created tab finish initializing before the entrance animation starts.
+
+    Return to Home, tap Reset, and register Tesla again. The car should leave,
+    the screen become covered, and Home appear through the circle before the
+    cards arrive in order. Try carDeparture's duration at 900 instead of 450,
+    compare, then restore 450.
+
+    Your CarLog app now remembers your car and fuel records between launches.
+    You can add, edit, and delete records on Home, then use Statistics to see
+    how much fuel you bought and what you spent over a selected period.
+*/

@@ -30,6 +30,25 @@ file(GLOB_RECURSE QmlFiles RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} qml/*.qml qml/*.
 file(GLOB_RECURSE AssetsFiles RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/* qml/*)
 list(REMOVE_ITEM AssetsFiles ${QmlFiles})
 
+# Generate tutorial HTML on demand and show documentation in the IDE.
+file(GLOB_RECURSE DocumentationFiles CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/docs/*"
+)
+set(CARLOG_QDOC_EXECUTABLE "" CACHE FILEPATH "QDoc executable (empty for automatic discovery)")
+option(CARLOG_DOCS_OPEN_BROWSER "Open the tutorial after generating documentation" ON)
+add_custom_target(carlog_docs
+    COMMAND "${CMAKE_COMMAND}"
+        "-DQDOC_EXECUTABLE=${CARLOG_QDOC_EXECUTABLE}"
+        "-DOPEN_BROWSER=${CARLOG_DOCS_OPEN_BROWSER}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/docs/BuildDocumentation.cmake"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Generating CarLog tutorial HTML with QDoc"
+    SOURCES ${DocumentationFiles}
+    USES_TERMINAL
+    VERBATIM
+)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${DocumentationFiles})
+
 # Executable should have same name as project
 qt_add_executable(appCarLog
     main.cpp

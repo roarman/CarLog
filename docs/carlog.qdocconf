@@ -1,0 +1,14 @@
+project = CarLog
+description = Build a local fuel log with Felgo and QML
+version = 0.1
+sourcedirs = src
+sources.fileextensions = *.qdoc
+exampledirs = ..
+excludedirs = ../build ../.git
+imagedirs = images ../assets
+outputformats = HTML
+outputdir = ../build/docs
+HTML.stylesheets = style/tutorial.css
+HTML.extraimages = images/home.png images/statistics.png images/onboarding.png images/fuel-form.png images/list-preview.png
+HTML.headerstyles = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"stylesheet\" href=\"style/tutorial.css\">"
+HTML.nosubdirs = true
